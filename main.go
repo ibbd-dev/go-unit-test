@@ -102,7 +102,7 @@ func showUnitTest(prj Project, c *gin.Context) {
 }
 
 func startProcess(prj Project) error {
-	cmdStr := fmt.Sprintf("cd %s; goconvey -host %s -port %d", prj.path, processHost, processPort)
+	cmdStr := fmt.Sprintf("cd %s; $GOPATH/bin/goconvey -host %s -port %d", prj.path, processHost, processPort)
 	fmt.Printf("cmd: %s\n", cmdStr)
 	cmd := exec.Command("/bin/bash", "-c", cmdStr)
 
