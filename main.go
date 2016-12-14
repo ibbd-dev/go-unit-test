@@ -59,7 +59,7 @@ func main() {
 func showIndex(c *gin.Context) {
 	c.HTML(http.StatusOK, "index.tmpl", gin.H{
 		"host":     processHost,
-		"port":     processPort,
+		"port":     mainPort,
 		"projects": projects,
 	})
 }
