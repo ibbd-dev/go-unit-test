@@ -13,16 +13,22 @@ import (
 	"github.com/ibbd-dev/go-tools/timer"
 )
 
+const (
+	mainPort = "8188"
+)
+
 var runningProjectName string
 var startTime time.Time
 
 func main() {
 	r := gin.Default()
+	r.LoadHTMLGlob("./index.tmpl")
 
-	r.GET("/:projectName/:action", processProject)
+	r.GET("/index", showIndex)
+	r.GET("/action/:projectName/:action", processProject)
 
 	s := &http.Server{
-		Addr:    ":8188",
+		Addr:    ":" + mainPort,
 		Handler: r,
 	}
 
@@ -33,7 +39,7 @@ func main() {
 	timer.AddFunc(func() {
 		now := time.Now()
 		for _, v := range projects {
-			if v.name == runningProjectName && startTime.Add(closeDuration).Before(now) {
+			if v.Name == runningProjectName && startTime.Add(closeDuration).Before(now) {
 				pid, err := getPid()
 				if err != nil {
 					fmt.Printf("duration getId error\n")
@@ -44,49 +50,104 @@ func main() {
 					return
 				}
 
-				runningProjectName = ""
 				fmt.Printf("duration stop success: %s\n", pid)
 			}
 		}
 	}, time.Minute)
 }
 
+func showIndex(c *gin.Context) {
+	c.HTML(http.StatusOK, "index.tmpl", gin.H{
+		"host":     processHost,
+		"port":     processPort,
+		"projects": projects,
+	})
+}
+
 func processProject(c *gin.Context) {
 	defer c.Request.Body.Close()
 
-	var id int = -1
 	prjName := c.Param("projectName")
-	for k, v := range projects {
-		if v.name == prjName {
-			id = k
-			break
-		}
-	}
-	if id < 0 {
+	id, prj, err := getProject(prjName)
+	if err != nil {
 		c.String(http.StatusBadRequest, "BAD Project name: %s", prjName)
 	}
 
 	action := c.Param("action")
 	switch action {
 	case actionShow:
-		showUnitTest(projects[id], c)
+		showProcess(projects[id], c)
+
+		// 输出
+		c.String(http.StatusOK, "http://%s:%d", processHost, processPort)
+		return
+
 	case actionStop:
+		pid, err := getPid()
+		if err != nil {
+			c.String(http.StatusBadRequest, "%s getId error: %s\n", action, err.Error())
+			return
+		}
+
+		if err = stopProcess(pid); err != nil {
+			c.String(http.StatusBadRequest, "%s pid: %s error: %s\n", action, pid, err.Error())
+			return
+		}
+
 	case actionStart:
+		// 创建新的单元测试
+		if err = startProcess(prj); err != nil {
+			c.String(http.StatusInternalServerError, "showUnitTest startProcess: %s", err.Error())
+			return
+		}
+
 	case actionRestart:
+		pid, err := getPid()
+		if err != nil {
+			c.String(http.StatusBadRequest, "%s getId error: %s\n", action, err.Error())
+			return
+		}
+
+		if err = stopProcess(pid); err != nil {
+			c.String(http.StatusBadRequest, "%s pid: %s error: %s\n", action, pid, err.Error())
+			return
+		}
+
+		if err = startProcess(prj); err != nil {
+			c.String(http.StatusInternalServerError, "showUnitTest startProcess: %s", err.Error())
+			return
+		}
+
+		// 输出
+		c.String(http.StatusOK, "http://%s:%d", processHost, processPort)
+		return
+
 	default:
 		c.String(http.StatusBadRequest, "BAD action name: %s", action)
 	}
 
+	// 输出
+	c.String(http.StatusOK, "action: %s success", action)
 }
 
-func showUnitTest(prj Project, c *gin.Context) {
+func getProject(prjName string) (key int, prj Project, err error) {
+	for key, prj = range projects {
+		if prj.Name == prjName {
+			return key, prj, nil
+		}
+	}
+
+	return key, prj, errors.New("project is not existed for name: " + prjName)
+}
+
+func showProcess(prj Project, c *gin.Context) {
 	pid, err := getPid()
 	if err != nil {
 		c.String(http.StatusInternalServerError, "showUnitTest getPid: %s", err.Error())
 		return
 	}
 	if len(pid) > 2 {
-		if runningProjectName != prj.name {
+		if runningProjectName != prj.Name {
 			// 进程已经启动，但是运行的不是当前的项目
 			stopProcess(pid)
 		}
@@ -96,20 +157,17 @@ func showUnitTest(prj Project, c *gin.Context) {
 			c.String(http.StatusInternalServerError, "showUnitTest startProcess: %s", err.Error())
 		}
 	}
-
-	// 输出
-	c.String(http.StatusOK, "http://%s:%d", processHost, processPort)
 }
 
 func startProcess(prj Project) error {
-	cmdStr := fmt.Sprintf("cd %s; $GOPATH/bin/goconvey -host %s -port %d", prj.path, processHost, processPort)
+	cmdStr := fmt.Sprintf("cd %s; $GOPATH/bin/goconvey -host %s -port %d", prj.Path, processHost, processPort)
 	fmt.Printf("cmd: %s\n", cmdStr)
 	cmd := exec.Command("/bin/bash", "-c", cmdStr)
 
 	// 这里需要异步
 	go cmd.Run()
 	startTime = time.Now()
-	runningProjectName = prj.name
+	runningProjectName = prj.Name
 	return nil
 }
 
@@ -122,6 +180,7 @@ func stopProcess(pid string) error {
 		return err
 	}
 	fmt.Printf("kill success pid: %s\n", pid)
+	runningProjectName = ""
 
 	return nil
 }
