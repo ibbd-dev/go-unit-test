@@ -1,6 +1,8 @@
 # go-unit-test
 golang单元测试，使用goconvey对各个项目的单元测试的结果进行可视化
 
+注：同一时间只允许一个项目在做单元测试。
+
 ## Install
 
 ```sh
