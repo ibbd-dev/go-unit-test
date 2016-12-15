@@ -13,11 +13,10 @@ import (
 	"github.com/ibbd-dev/go-tools/timer"
 )
 
-const (
-	mainPort = "8188"
-)
-
+// 正在运行的项目名称
 var runningProjectName string
+
+// 项目的启动时间
 var startTime time.Time
 
 func main() {
@@ -28,10 +27,11 @@ func main() {
 	r.GET("/action/:projectName/:action", processProject)
 
 	s := &http.Server{
-		Addr:    ":" + mainPort,
+		Addr:    ":" + fmt.Sprint(mainPort),
 		Handler: r,
 	}
 
+	fmt.Printf("Start from: http://%s:%d/index", host, mainPort)
 	s.ListenAndServe()
 
 	// 定期清理过期的进程
@@ -56,30 +56,57 @@ func main() {
 	}, time.Minute)
 }
 
+// showIndex 显示首页
 func showIndex(c *gin.Context) {
 	c.HTML(http.StatusOK, "index.tmpl", gin.H{
-		"host":     processHost,
-		"port":     mainPort,
+		"host":     host,
+		"port":     fmt.Sprint(mainPort),
+		"time":     time.Now().Unix(),
 		"projects": projects,
 	})
 }
 
+// startSuccess 启动成功之后，跳转到目标地址
+func startSuccess(c *gin.Context) {
+	url := fmt.Sprintf("http://%s:%d\n", host, processPort)
+	//c.Redirect(http.StatusFound, url)
+	c.Redirect(http.StatusMovedPermanently, url)
+}
+
+// processProject 处理单元测试项目
 func processProject(c *gin.Context) {
 	defer c.Request.Body.Close()
 
 	prjName := c.Param("projectName")
-	id, prj, err := getProject(prjName)
+	_, prj, err := getProject(prjName)
 	if err != nil {
 		c.String(http.StatusBadRequest, "BAD Project name: %s", prjName)
+		return
 	}
 
 	action := c.Param("action")
 	switch action {
 	case actionShow:
-		showProcess(projects[id], c)
+		pid, err := getPid()
+		if err != nil {
+			c.String(http.StatusInternalServerError, "show action: %s", err.Error())
+			return
+		}
+		if len(pid) > 2 {
+			if runningProjectName != prj.Name {
+				// 进程已经启动，但是运行的不是当前的项目
+				stopProcess(pid)
+			}
+		}
+
+		// 创建新的单元测试
+		if err = startProcess(prj); err != nil {
+			c.String(http.StatusInternalServerError, "show action: %s", err.Error())
+			return
+		}
 
 		// 输出
-		c.String(http.StatusOK, "http://%s:%d", processHost, processPort)
+		startSuccess(c)
 		return
 
 	case actionStop:
@@ -95,7 +122,7 @@ func processProject(c *gin.Context) {
 		}
 
 	case actionStart:
-		// 创建新的单元测试
+		// 只是启动单元测试项目
 		if err = startProcess(prj); err != nil {
 			c.String(http.StatusInternalServerError, "showUnitTest startProcess: %s", err.Error())
 			return
@@ -119,15 +146,12 @@ func processProject(c *gin.Context) {
 		}
 
 		// 输出
-		c.String(http.StatusOK, "http://%s:%d", processHost, processPort)
+		startSuccess(c)
 		return
 
 	default:
 		c.String(http.StatusBadRequest, "BAD action name: %s", action)
 	}
-
-	// 输出
-	c.String(http.StatusOK, "action: %s success", action)
 }
 
 func getProject(prjName string) (key int, prj Project, err error) {
@@ -140,32 +164,28 @@ func getProject(prjName string) (key int, prj Project, err error) {
 	return key, prj, errors.New("project is not existed for name: " + prjName)
 }
 
-func showProcess(prj Project, c *gin.Context) {
-	pid, err := getPid()
-	if err != nil {
-		c.String(http.StatusInternalServerError, "showUnitTest getPid: %s", err.Error())
-		return
-	}
-	if len(pid) > 2 {
-		if runningProjectName != prj.Name {
-			// 进程已经启动，但是运行的不是当前的项目
-			stopProcess(pid)
-		}
-	} else {
-		// 创建新的单元测试
-		if err = startProcess(prj); err != nil {
-			c.String(http.StatusInternalServerError, "showUnitTest startProcess: %s", err.Error())
-		}
-	}
-}
-
 func startProcess(prj Project) error {
-	cmdStr := fmt.Sprintf("cd %s; $GOPATH/bin/goconvey -host %s -port %d", prj.Path, processHost, processPort)
+	cmdStr := fmt.Sprintf("cd %s; $GOPATH/bin/goconvey -host %s -port %d", prj.Path, host, processPort)
 	fmt.Printf("cmd: %s\n", cmdStr)
 	cmd := exec.Command("/bin/bash", "-c", cmdStr)
 
 	// 这里需要异步
-	go cmd.Run()
+	//go cmd.Run()
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < 120; i++ {
+		time.Sleep(time.Second)
+		outBts, err := cmd.Output()
+		if err != nil {
+			return err
+		}
+		out := string(outBts)
+		fmt.Printf("%s", out)
+	}
+
 	startTime = time.Now()
 	runningProjectName = prj.Name
 	return nil

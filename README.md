@@ -10,6 +10,8 @@ golang单元测试，使用goconvey对各个项目的单元测试的结果进行
 go get -u github.com/ibbd-dev/go-unit-test
 
 # 配置
+# 主要配置host, 端口号, 项目, 启动单元测试项目的有效期（过期会自动关闭）等
+# 默认主程序端口号为8180，单元测试项目的端口号为8181
 cd /path/to/go-unit-test
 cp env.go.example env.go
 vim env.go
@@ -19,8 +21,8 @@ go build
 ./go-unit-test
 ```
 
-# Example
+# 使用
 
-- 浏览器访问：http://localhost:8188/tools-float/show　，其中`tools-float`是配置中的项目名
-- 上面会输出一个地址，访问该地址即可
+- 浏览器访问：http://localhost:8180/index ，根据配置`env.go`中的配置信息，这里会显示相应的项目的启动方式。
+- 点击其中其中一个项目，会先新窗口打开页面，并会自动跳转到目标页面
 
