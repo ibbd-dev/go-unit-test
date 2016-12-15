@@ -16,7 +16,8 @@ cd /path/to/go-unit-test
 cp env.go.example env.go
 vim env.go
 
-# 启动
+# 编译并启动
+# 如果启动不成功，可能是端口号已经被占用了
 go build
 ./go-unit-test
 ```

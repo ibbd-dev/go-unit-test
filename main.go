@@ -170,14 +170,9 @@ func startProcess(prj Project) error {
 	cmd := exec.Command("/bin/bash", "-c", cmdStr)
 
 	// 这里需要异步
-	//go cmd.Run()
-	err := cmd.Run()
-	if err != nil {
-		return err
-	}
+	go cmd.Run()
 
 	for i := 0; i < 120; i++ {
-		time.Sleep(time.Second)
 		outBts, err := cmd.Output()
 		if err != nil {
 			return err
@@ -186,6 +181,7 @@ func startProcess(prj Project) error {
 		fmt.Printf("%s", out)
 	}
 
+	time.Sleep(time.Second)
 	startTime = time.Now()
 	runningProjectName = prj.Name
 	return nil
