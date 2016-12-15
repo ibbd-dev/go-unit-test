@@ -170,18 +170,19 @@ func startProcess(prj Project) error {
 	cmd := exec.Command("/bin/bash", "-c", cmdStr)
 
 	// 这里需要异步
+	var out bytes.Buffer
+	cmd.Stdout = &out
 	go cmd.Run()
 
 	for i := 0; i < 120; i++ {
-		outBts, err := cmd.Output()
-		if err != nil {
-			return err
+		time.Sleep(time.Second)
+		if bytes.ContainsAny(out.Bytes(), "Executor status: 'idle'") {
+			fmt.Println("start success!")
+			break
 		}
-		out := string(outBts)
-		fmt.Printf("%s", out)
+		fmt.Println("starting...")
 	}
 
-	time.Sleep(time.Second)
 	startTime = time.Now()
 	runningProjectName = prj.Name
 	return nil
